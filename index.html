@@ -1,0 +1,208 @@
+<html>
+  <head>
+    <title>Japanese Anki Card Generator</title>
+    <script>
+      function load_dictionary_from_string(s)
+      {
+        var dictionary = {};
+        for (line of s.split('\n'))
+        {
+          if (line == '') continue;
+          line = line.split(' ');
+          var word = line[0];
+          var hirigana = null;
+          var definition;
+          if (line[1][0] == '[' && line[1].slice(-1) == ']')
+          {
+            hirigana = line[1].slice(1,-1);
+            definition = line.slice(2).join(' ');
+          }
+          else
+          {
+            definition = line.slice(1).join(' ');
+          }
+          definition = definition.slice(1,-1).replace(/,/g, ' ').replace(/\/\(P\)/g, '');
+          if (hirigana != null)
+          {
+            var hdefinition = '['+hirigana+'] ' + definition;
+            if (dictionary[word])
+            {
+              dictionary[word].push(hdefinition);
+            }
+            else
+            {
+              dictionary[word] = [hdefinition];
+            }
+            if (dictionary[hirigana])
+            {
+              dictionary[hirigana].push(definition);
+            }
+            else
+            {
+              dictionary[hirigana] = [definition];
+            }
+          }
+          else
+          {
+            if (dictionary[word])
+            {
+              dictionary[word].push(definition);
+            }
+            else
+            {
+              dictionary[word] = [definition];
+            }
+          }
+        }
+        window.dictionary = dictionary;
+        document.getElementById('status_span').innerText = 'Ready!';
+      }
+      
+      function pick_file_and_callback(cb)
+      {
+        var f = document.querySelector('input[type=file]');
+          f.onchange = function() { 
+            var reader = new FileReader();
+            reader.onload = function(){
+              cb(reader.result);
+            };
+            reader.readAsText(f.files[0]);
+          };
+          f.click();
+      }
+      
+      function load_dictionary()
+      {
+        document.getElementById('status_span').innerText = 'Loading Dictionary...';
+        pick_file_and_callback(load_dictionary_from_string);
+      }
+
+      function generate_from_file()
+      {
+        pick_file_and_callback(generate_from_string);
+      }
+
+      function generate_from_string(s)
+      {
+        var separators = /[^\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/;
+        if (document.getElementById('ignore_katakana').checked)
+        {
+          separators = /[^\u3040-\u309F\u4E00-\u9FAF]+/;
+        }
+        var word_frequency = {};
+        for (line of s.split(separators))
+        {
+          var w = line;
+          while(w != '')
+          {
+            if (window.dictionary[w])
+            {
+              if (word_frequency[w])
+                word_frequency[w]++;
+              else
+                word_frequency[w] = 1;
+              line = line.slice(w.length);
+              w = line;
+            }
+            else
+            {
+              w = w.slice(0,-1);
+            }
+          }
+        }
+        
+        var word_frequency_pairs = Object.keys(word_frequency).map(function(key) {
+          return [key, word_frequency[key]];
+        });
+        
+        word_frequency_pairs.sort(function(first, second) {
+          return second[1] - first[1];
+        });
+        window.word_frequency_pairs = word_frequency_pairs;
+
+        var cards = [];
+        for (kv of word_frequency_pairs)
+        {
+          cards.push('<h1>'+kv[0]+'</h1>,'+window.dictionary[kv[0]].join('<br>'));
+        }
+
+        download(cards.join('\n'), 'cards.csv', 'text/csv');
+      }
+        
+      function generate_from_textbox()
+      {
+        generate_from_string(document.querySelector('textarea').value);
+      }
+      
+      // https://stackoverflow.com/questions/13405129/javascript-create-and-save-file
+      function download(data, filename, type) {
+        var file = new Blob([data], {type: type});
+        if (window.navigator.msSaveOrOpenBlob) // IE10+
+          window.navigator.msSaveOrOpenBlob(file, filename);
+        else { // Others
+          var a = document.createElement("a"),
+              url = URL.createObjectURL(file);
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);  
+          }, 0); 
+        }
+      }
+      
+      function get_default_dictionary_and_callback(cb)
+      {
+        var xhr = new XMLHttpRequest();
+        xhr.addEventListener('load', function(r){
+          cb(r.currentTarget.responseText);
+        });
+        xhr.open("GET", "dict.dat");
+        xhr.send();
+      }
+      
+      function dowload_default_dictionary()
+      {
+        get_default_dictionary_and_callback(function(r){
+          download(r, 'dict.txt', 'text/plain');
+        });
+      }
+      
+      window.onload = function(){
+        get_default_dictionary_and_callback(load_dictionary_from_string);
+      }
+    </script>
+    <style>
+      textarea
+      {
+        display: block;
+        margin: 10px;
+        width: 80%;
+        height: 30%;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Japanese Anki Flashcard Generator</h2>
+	  This app will generate vocabulary flashcards for Anki based off of any Japanese text. Each card has a vocabulary word on the front and all of the word's definitions and, if applicable, readings on the back. Follow the steps below to get started.
+    <ol>
+      <li>Copy and paste any Japanese text either into the textbox or into a text file. </li>
+      <li>Click either "Generate Cards from Textbox" or "Generate Cards from File" accordingly. The app will create a file called cards.csv</li>
+      <li>Open the desktop version of Anki and click File > Import</li>
+      <li>Select cards.csv</li>
+      <li>Click the deck button in the upper right. Then either choose an existing deck to add the cards to or click Add to create a new deck.</li>
+      <li>Ensure "Allow HTML in fields" is checked.</li>
+      <li>Leave all other settings unchanged and click Import.</li>
+    </ol>
+    The formatting of your text doesn't matter; the app will ignore non-Japanese characters. Cards are sorted based on the frequency at which words appear in your text with frequently occurring words appearing first and infrequently occurring words appearing last. The "Ignore Katakana" option can be used if your text contains a lot of non-Japanese words written in Katakana. Additionally, a custom dictionary can be loaded with the "Load Dictionary" button. The default dictionary can be used as a template / starting point. Download it by clicking <a href='#' onclick='dowload_default_dictionary()'>here</a> and edit it using any text editor.<br><br>
+    Status: <span id='status_span'>Loading Dictionary...</span>
+    <textarea></textarea>
+    <input type='file' style='display:none' />
+    <input type='checkbox' id='ignore_katakana'> Ignore Katakana<br><br>
+    <input type='button' value='Load Dictionary' onclick='load_dictionary()' />
+    <input type='button' value='Generate Cards from Textbox' onclick='generate_from_textbox()' />
+    <input type='button' value='Generate Cards from File' onclick='generate_from_file()' />
+  </body>
+</html>

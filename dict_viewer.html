@@ -1,0 +1,154 @@
+<html>
+  <head>
+    <title>Japanese Dictionary Search</title>
+    <script>
+      function load_dictionary_from_string(s)
+      {
+        var dictionary = {};
+        for (line of s.split('\n'))
+        {
+          if (line == '') continue;
+          line = line.split(' ');
+          var word = line[0];
+          var hirigana = null;
+          var definition;
+          if (line[1][0] == '[' && line[1].slice(-1) == ']')
+          {
+            hirigana = line[1].slice(1,-1);
+            definition = line.slice(2).join(' ');
+          }
+          else
+          {
+            definition = line.slice(1).join(' ');
+          }
+          definition = definition.slice(1,-1).replace(/,/g, ' ').replace(/\/\(P\)/g, '');
+          if (hirigana != null)
+          {
+            var hdefinition = '['+hirigana+'] ' + definition;
+            if (dictionary[word])
+            {
+              dictionary[word].push(hdefinition);
+            }
+            else
+            {
+              dictionary[word] = [hdefinition];
+            }
+            if (dictionary[hirigana])
+            {
+              dictionary[hirigana].push(definition);
+            }
+            else
+            {
+              dictionary[hirigana] = [definition];
+            }
+          }
+          else
+          {
+            if (dictionary[word])
+            {
+              dictionary[word].push(definition);
+            }
+            else
+            {
+              dictionary[word] = [definition];
+            }
+          }
+        }
+        window.dictionary = dictionary;
+        document.getElementById('status_span').innerText = 'Ready!';
+      }
+      
+      function pick_file_and_callback(cb)
+      {
+        var f = document.querySelector('input[type=file]');
+          f.onchange = function() { 
+            var reader = new FileReader();
+            reader.onload = function(){
+              cb(reader.result);
+            };
+            reader.readAsText(f.files[0]);
+          };
+          f.click();
+      }
+      
+      function load_dictionary()
+      {
+        document.getElementById('status_span').innerText = 'Loading Dictionary...';
+        pick_file_and_callback(load_dictionary_from_string);
+      }
+
+      function get_default_dictionary_and_callback(cb)
+      {
+        var xhr = new XMLHttpRequest();
+        xhr.addEventListener('load', function(r){
+          cb(r.currentTarget.responseText);
+        });
+        xhr.open("GET", "dict.dat");
+        xhr.send();
+      }
+      
+      function search()
+      {
+        var q = document.querySelector('#query').value;
+        var results = [];
+        if (/\w+/.exec(q))
+        {
+          q = q.toLowerCase();
+          for(var word in window.dictionary)
+          {
+            for (var def of window.dictionary[word])
+            {
+              if (def.toLowerCase().indexOf(q) != -1)
+              {
+                results.push('['+word+'] '+def);
+              }
+            }
+          }
+        }
+        else
+        {
+          for(var word in window.dictionary)
+          {
+            if (word.length == q.length)
+            {
+              var match = true;
+              for(var i = 0; i < q.length; i++)
+              {
+                if (q[i] != '?' && word[i] != q[i])
+                {
+                  match = false;
+                  break;
+                }
+              }
+              if (match)
+              {
+                for (def of window.dictionary[word])
+                {
+                  results.push('['+word+'] '+def);
+                }
+              }
+            }
+          }
+        }
+        document.querySelector('#results').innerHTML = results.join('<br><br>');
+      }
+      
+      window.onload = function(){
+        get_default_dictionary_and_callback(load_dictionary_from_string);
+      }
+    </script>
+    <style>
+      
+    </style>
+  </head>
+  <body>
+    <h2>Japanese Dictionary Search</h2>
+    Status: <span id='status_span'>Loading Dictionary...</span><br><br>
+    Query: <input type='text' id='query'>
+    <input type='button' value='Search' onclick='search()'>
+    <input type='button' value='Load Dictionary' onclick='load_dictionary()' />
+    <br><br>
+    <input type='file' style='display:none' />
+    <div id='results'></div>
+  </body>
+</html>
